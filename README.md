@@ -8,7 +8,7 @@
 
 ![](/img/room.jpg)
 
-如果失效了，可以加我好友`kanadeblisst`，或者关注我的公众号后台发送`视频号群`获取最新的
+如果失效了，可以加我好友`kanadeblisst`，或者关注我的公众号`Python成长路`, 后台发送`视频号群`获取最新的
 
 ![](/img/Pygrower.jpg)
 
