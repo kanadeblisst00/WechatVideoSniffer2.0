@@ -1,0 +1,61 @@
+﻿
+namespace sunny;
+
+class response{
+	ctor(messageId){
+		this.messageId = messageId;
+	}
+	@_meta;
+}
+
+namespace  response{
+    Free = ::SunnyDLL.api("Free","void(pointer p)");
+    // 获取响应数据
+	GetResponseBody = ::SunnyDLL.api("GetResponseBody","pointer(int i)");
+	
+	GetResponseHeader = ::SunnyDLL.api("GetResponseHeader","pointer(int i, str k)");
+	
+	GetResponseAllHeader = ::SunnyDLL.api("GetResponseAllHeader","pointer(int i)");
+	
+	DelResponseHeader = ::SunnyDLL.api("DelResponseHeader","void(int i, str k)");
+	
+	SetResponseHeader = ::SunnyDLL.api("SetResponseHeader","void(int i, str k, str v)");
+	
+	SetResponseAllHeader = ::SunnyDLL.api("SetResponseAllHeader","void(int i, str h)");
+	
+	SetResponseStatus = ::SunnyDLL.api("SetResponseStatus","void(int i, int s)");
+	
+	GetResponseStatusCode = ::SunnyDLL.api("GetResponseStatusCode","int(int i)");
+	
+	GetResponseStatus = ::SunnyDLL.api("GetResponseStatus","pointer(int i)");
+	
+	GetResponseBodyLen = ::SunnyDLL.api("GetResponseBodyLen","int(int i)");
+	
+	SetResponseData = ::SunnyDLL.api("SetResponseData","void(int i, string s, int l)");
+	
+	xcall = function(name, messageId, len){
+		var func = self[name];
+		if(!func) error("不支持的函数!");
+		function proxyFunc(...){
+			var v = func(messageId, ...);
+			var result;
+			if(type(v) == type.pointer){
+				if(len) result = ..raw.tostring(v,1,len);
+				else result = ..raw.tostring(v);
+				Free(v);
+			}else{
+				result = v;
+			}
+			return result;
+		}
+		
+		return proxyFunc;
+	}
+	
+	_meta = {
+		_get = function(k){
+			return xcall(k, owner.messageId);
+		}
+		
+	}
+}

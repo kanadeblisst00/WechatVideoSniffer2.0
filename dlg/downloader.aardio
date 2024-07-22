@@ -1,0 +1,190 @@
+//多线程多任务下载(照抄的aardio扩展库范例)
+import win.ui;
+import process.aria2;
+/*DSG{{*/
+var winform = win.form(text="下载器";right=921;bottom=537;bgcolor=16777215)
+winform.add(
+listview={cls="listview";left=8;top=7;right=912;bottom=318;bgcolor=16777215;db=1;dl=1;dr=1;dt=1;edge=1;fullRow=1;z=1};
+txtMessage={cls="edit";left=8;top=328;right=912;bottom=523;db=1;dl=1;dr=1;edge=1;hscroll=1;multiline=1;vscroll=1;z=2}
+)
+/*}}*/
+
+winform.listview.insertColumn("网址",180);
+winform.listview.insertColumn("GID",100);
+winform.listview.insertColumn("连接数",120);
+winform.listview.insertColumn("状态",100);
+winform.listview.insertColumn("大小",80);
+winform.listview.insertColumn("速度",80);
+winform.listview.insertColumn("已下载",120);
+winform.listview.adjust = function(cx,cy){
+    winform.listview.fillParent(1);
+}
+
+winform.aria2 = process.aria2();
+winform.aria2.logger = winform.txtMessage;
+winform.aria2.downloadDir = winform.downloadDir : io.localpath("/cache"); //指定默认下载目录
+winform.aria2.startServer("--max-connection-per-server=16", "--check-certificate=false")
+
+//获取JSON-RPC客户端
+var jsonClient = winform.aria2.jsonClient();
+jsonClient.on("error",function(err,serverError){
+	winform.txtMessage.print(err,serverError);
+})
+
+jsonClient.on("close",function(e){
+	winform.txtMessage.print("websocket 已关闭",e);
+	jsonClient.connect()
+}) 
+
+
+//监听 aria2 事件
+jsonClient.on("aria2.onDownloadStart",function(param){
+    var item = winform.listview.downloadData[param.gid]
+    if(!item){
+    	item = winform.listview.addItem({
+        			"",param.gid,null,"添加成功" 
+        });
+        winform.listview.downloadData[param.gid] = item; 
+    }
+    
+    winform.listview.setItemText("开始下载",item,4); 
+})
+
+jsonClient.on("aria2.onDownloadPause",function(param){
+    var item = winform.listview.downloadData[param.gid]
+    winform.listview.setItemText("暂停下载",item,4); 
+})
+
+jsonClient.on("aria2.onDownloadStop",function(param){
+    var item = winform.listview.downloadData[param.gid]
+    winform.listview.setItemText("已停止",item,4); 
+})
+ 
+jsonClient.on("aria2.onDownloadComplete",function(param){
+    var item = winform.listview.downloadData[param.gid];
+    winform.listview.setItemText("已完成",item,4); 
+    var rawID = winform.listview.downloadUrlData[param.gid];
+    jsonClient.aria2.getFiles(param.gid).end = function(result,err){
+    	if(result && result[1]){
+    		var path = result[1].path;
+        	for(i=1;monitorForm.listview.count;1){
+            	if(monitorForm.listview.getItemText(i, 1) == rawID){
+            		monitorForm.listview.setItemText(path, i, 6);
+            		var key = monitorForm.listview.getItemText(i, 5);
+					var name = monitorForm.listview.getItemText(i, 2);
+					var decodeArray = monitorForm.webView.xcall("get_decryptor_array", key);
+					thread.invoke(monitorForm.decodeVideo, name, path, decodeArray, rawID, monitorForm);
+            	}
+        	}
+    	}
+    }
+})
+
+jsonClient.on("aria2.onDownloadError",function(param){
+    var item = winform.listview.downloadData[param.gid]
+    
+    jsonClient.aria2.tellStatus(param.gid,{
+    	"errorMessage"
+    }).end = function(result,err){
+        if(result) winform.listview.setItemText(result.errorMessage,item,4);  
+    }
+})
+
+winform.listview.downloadData = {}
+winform.listview.downloadUrlData = {}
+winform.download = function(url, rawID){
+	jsonClient.aria2.addUri({url}).end = function(result,err){
+        if(err){
+        	winform.listview.addItem({
+        		url,null,null,"出错了："+web.json.stringify(err)
+        	});
+        } 
+        else {
+            var item = winform.listview.addItem({
+        		url,result,null,"添加成功" 
+        	}); 
+        	winform.listview.downloadUrlData[result] = rawID;
+        	winform.listview.downloadData[result] =  item;
+        } 
+    }	
+}
+
+
+//获取进度
+//https://aria2.github.io/manual/en/html/aria2c.html#aria2.tellStatus
+
+
+winform.show();
+
+var getDownloadStatus;
+var getNextDownloadStatus;
+var statusQueue = {}
+updateDownloadStatus = function(){
+	 
+	for(gid,item in winform.listview.downloadData){ 
+		if(statusQueue[gid]) continue;
+		statusQueue[gid] = true;
+		
+		jsonClient.aria2.tellStatus(gid,{
+    		"gid","connections","downloadSpeed","totalLength","completedLength"
+    	}).end = function(result,err){
+        	if(result) { 
+        		var item = winform.listview.downloadData[result.gid]
+        		winform.listview.setItemText(result.connections,item,3); 
+        		winform.listview.setItemText(math.size64(result.downloadSpeed,item).format() + "/s",item,6); 
+        		winform.listview.setItemText(math.size64(result.totalLength).format(),item,5); 
+        		winform.listview.setItemText(math.size64(result.completedLength).format(),item,7);
+        	}
+        	else {
+        		
+        	}
+        	
+        	statusQueue[gid] = false;
+    	}
+	}
+}
+
+//启动就绪执行
+winform.aria2.ready(
+    function(){
+        
+        //查看默认配置
+        jsonClient.aria2.getGlobalOption().end = function(result,err){
+            winform.txtMessage.print(result)
+        }
+        
+        //创建定时器，更新下载进度
+        winform.setInterval(  updateDownloadStatus,100);
+    }
+)
+
+//下载任务右键管理菜单
+import win.ui.menu;
+winform.listview.onnotify = function(id,code,ptr){  
+	if( code = 0xFFFFFFFB/*_NM_RCLICK*/ ){
+	
+		var nm = winform.listview.getNotifyMessage(code,ptr);
+
+  		//创建弹出菜单
+		var popmenu = win.ui.popmenu(winform); 
+		popmenu.add('移除',function(id){ 
+			var gid = winform.listview.getItemText(nm.iItem,2);
+    		jsonClient.aria2.remove(gid);
+    		winform.listview.delItem(nm.iItem); 
+		} )
+		popmenu.add('清空',function(id){ 
+			for(i=1;winform.listview.count;1){
+				var gid = winform.listview.getItemText(i,2);
+    			jsonClient.aria2.remove(gid);
+    		}
+    		winform.listview.clear(); 
+		} )
+		
+		popmenu.popup(); 
+	}
+}
+
+
+
+winform.show(); 
+win.loopMessage();

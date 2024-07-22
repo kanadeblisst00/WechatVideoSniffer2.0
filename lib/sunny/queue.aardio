@@ -1,0 +1,46 @@
+﻿import win.guid;
+namespace sunny;
+
+class queue{
+	ctor(_id){
+		if(!_id) _id = ..win.guid.create(); 
+		this._id = _id;
+		CreateQueue(this._id);
+		..table.gc(this, "release");
+	}
+	empty = function(){
+		return QueueIsEmpty(this._id);
+	}
+	release = function(){
+		return QueueRelease(this._id);
+	}
+	size = function(){
+		return QueueLength(this._id);
+	}
+	push = function(s){
+		QueuePush(this._id, s, #s);
+	}
+	pop = function(){
+		var p = QueuePull(this._id);
+		var content = ..raw.tostring(p);
+		Free(p);
+		return content;
+	}
+	
+}
+
+namespace queue{
+	Free = ::SunnyDLL.api("Free","void(pointer p)");
+	// 判断队列是否为空
+	QueueIsEmpty = ::SunnyDLL.api("QueueIsEmpty","bool(str id)");
+	// 释放队列
+	QueueRelease = ::SunnyDLL.api("QueueRelease","bool(str id)");
+	// 创建队列
+	CreateQueue = ::SunnyDLL.api("CreateQueue","bool(str id)");
+	// 队列长度
+	QueueLength = ::SunnyDLL.api("QueueLength","bool(str id)");
+	// 压入队列
+	QueuePush = ::SunnyDLL.api("QueuePush","bool(str id, string d,int l)");
+	// 弹出
+	QueuePull = ::SunnyDLL.api("QueuePull","pointer(str id)");
+}

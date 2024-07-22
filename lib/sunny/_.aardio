@@ -1,0 +1,236 @@
+﻿import wsock;
+import win.version;
+
+class sunny{
+	ctor(port){
+		if(!port) port = ..wsock.getFreePort();
+		//..io.print("当前sunny版本: ", xcall("GetSunnyVersion")());
+		this.context = CreateSunnyNet();
+		//..io.print("当前绑定端口: ", port);
+		SunnyNetSetPort(this.context, port);
+		var err = xcall("SunnyNetInstallCert")(this.context);
+		//..io.print("SunnyNetInstallCert result: ", err);
+		if(..string.find(err,"@添加到存储") || ..string.find(err,"@已经在存储中")){
+			//..io.print("添加证书成功!");
+		}else{
+			..win.msgbox("添加证书失败！","错误信息");
+		}
+		this.HttpCallback = null;
+		this.TcpCallback = null;
+        this.WsCallback = null;
+        this.UDPCallback = null;
+        this._HttpCallback = null;
+		this._TcpCallback = null;
+        this._WsCallback = null;
+        this._UDPCallback = null;
+        this._callbackOwner = null;
+		..table.gc(this, "release");
+	}
+	release = function(){
+		if(!this.context) return;
+		if(..win.version.majorVersion < 10){
+			xcall("SetIeProxy")(this.context, true);
+		}
+		ReleaseSunnyNet(this.context)
+	}
+	
+	start = function(processName="WeChatAppEx.exe"){
+		if(this.HttpCallback){
+			this._HttpCallback = ..thread.tostdcall(this.HttpCallback,"void(int,int,int,int,str,str,str,int)",this.callbackOwner)
+		}
+		if(this.TcpCallback){
+			this._TcpCallback = ..thread.tostdcall(this.TcpCallback,"void(int ,str ,str ,int ,int ,int ,int ,int ,int)",this.callbackOwner)
+		}
+		if(this.WsCallback){
+			this._WsCallback = ..thread.tostdcall(this.WsCallback,"void(int ,int ,int ,int ,str ,str ,int ,int)",this.callbackOwner)
+		}
+		if(this.UDPCallback){
+			this._UDPCallback = ..thread.tostdcall(this.UDPCallback,"void(int ,str ,str ,int ,int ,int ,int)",this.callbackOwner)
+		}
+		SunnyNetSetCallback(this.context,this._HttpCallback,this._TcpCallback,this._WsCallback,this._UDPCallback);
+		if(..win.version.majorVersion < 10){
+			xcall("SetIeProxy")(this.context, false);
+		}else{
+			var r = xcall("StartProcess")(this.context);
+			if(!r){
+				error("加载驱动失败, 请检查是否以管理员权限运行，并且只允许一个sunny进程加载驱动，请先关闭其他sunny进程!");
+			}
+			if(processName) {
+				xcall("ProcessAddName")(this.context, processName);
+			}
+		}
+		var r = xcall("SunnyNetStart")(this.context);
+		if(!r){
+			..io.print(xcall("SunnyNetError")(this.context));
+			error("启动sunny失败,可能是端口被占用!");
+		}
+		return this;
+	}
+	
+	@_meta;
+}
+
+
+
+namespace sunny{
+	// 请求回调函数的消息类型
+	HTTP_SEND_REQUEST_TYPE = 1
+	
+	HTTP_SEND_REQUEST_DONE_TYPE = 2
+	
+	HTTP_SEND_REQUEST_FAIL_TYPE = 3
+	
+	::SunnyDLL = ..raw.loadDll("\Sunny.dll", ,"cdecl");
+	
+	Free = ::SunnyDLL.api("Free","void(pointer p)");
+	
+	GetSunnyVersion = ::SunnyDLL.api("GetSunnyVersion","pointer()");
+	// 修改tcp，type 1表示发送，2 表示接收
+	SetTcpBody = ::SunnyDLL.api("SetTcpBody","void(int i,int type,string s,int l)");
+	// 设置tcp代理,【仅支持S5代理 例如 socket5://admin:123456@127.0.0.1:8888】
+	SetTcpAgent = ::SunnyDLL.api("SetTcpAgent","void(int i,int type,str s)");
+	// 修改连接的ip和端口, s = "127.0.0.1:80"
+	SetTcpConnectionIP = ::SunnyDLL.api("SetTcpConnectionIP","void(int i,str s)");
+	// 向服务端发送tcp消息
+	TcpSendMsg = ::SunnyDLL.api("TcpSendMsg","int(int i,string s)");
+	// 向客户端发送tcp消息
+	TcpSendMsgClient = ::SunnyDLL.api("TcpSendMsgClient","int(int i,string s)");
+	// 断开tcp连接
+	TcpCloseClient = ::SunnyDLL.api("TcpCloseClient","int(int i)");
+	// 获取udp消息内容
+	GetUdpData = ::SunnyDLL.api("GetUdpData","int(int i)");
+	// 修改udp消息内容
+	SetUdpData = ::SunnyDLL.api("SetUdpData","bool(int i,string s)");
+	// 向服务端发送udp消息
+	UdpSendToServer = ::SunnyDLL.api("UdpSendToServer","bool(int i,string s)");
+	// 向客户端发送udp消息
+	UdpSendToClient = ::SunnyDLL.api("UdpSendToClient","bool(int i,string s)");
+	// 获取websockets的消息长度
+	GetWebsocketBodyLen = ::SunnyDLL.api("GetWebsocketBodyLen","int(int i)");
+	// 获取websockets的消息内容
+	GetWebsocketBody = ::SunnyDLL.api("GetWebsocketBody","pointer(int i)");
+	// 修改websockets的消息内容
+	SetWebsocketBody = ::SunnyDLL.api("SetWebsocketBody","bool(int i,string s,int l)");
+	// 向服务端发送websockets消息
+	SendWebsocketBody = ::SunnyDLL.api("SendWebsocketBody","bool(int i,string s,int l)");
+	// 向客户端发送websockets消息
+	SendWebsocketClientBody = ::SunnyDLL.api("SendWebsocketBody","bool(int i,string s,int l)");
+	// 端口websockets连接
+	CloseWebsocket = ::SunnyDLL.api("CloseWebsocket","bool(int i)");
+	// 添加http证书, 第三个参数: [1=发送请求时使用 2=发送及解析时使用 3=解析时使用]
+	AddHttpCertificate = ::SunnyDLL.api("AddHttpCertificate","bool(str h,pointer z,int a)");
+	// 删除证书
+	DelHttpCertificate = ::SunnyDLL.api("DelHttpCertificate","bool(str h)");
+	// br压缩
+	BrCompress = ::SunnyDLL.api("BrCompress","pointer(string b,int l)");
+	// br解压缩
+	BrUnCompress = ::SunnyDLL.api("BrUnCompress","pointer(string b,int l)");
+	// Deflate压缩
+	DeflateCompress = ::SunnyDLL.api("DeflateCompress","pointer(string b,int l)");
+	// Deflate解压缩
+	DeflateUnCompress = ::SunnyDLL.api("DeflateUnCompress","pointer(string b,int l)");
+	// Gzip压缩
+	GzipCompress = ::SunnyDLL.api("GzipCompress","pointer(string b,int l)");
+	// Gzip解压缩
+	GzipUnCompress = ::SunnyDLL.api("GzipUnCompress","pointer(string b,int l)");
+	// Zlib压缩
+	ZlibCompress = ::SunnyDLL.api("ZlibCompress","pointer(string b,int l)");
+	// Zlib解压缩
+	ZlibUnCompress = ::SunnyDLL.api("ZlibUnCompress","pointer(string b,int l)");
+	// pb转json
+	PbToJson = ::SunnyDLL.api("PbToJson","pointer(string b,int l)");
+	// json转pb
+	JsonToPB = ::SunnyDLL.api("JsonToPB","pointer(string b,int l)");
+	
+	CreateSunnyNet = ::SunnyDLL.api("CreateSunnyNet","pointer()");
+	
+	ReleaseSunnyNet = ::SunnyDLL.api("ReleaseSunnyNet","void(pointer c)");
+	
+	ExportCert = ::SunnyDLL.api("ExportCert","pointer(pointer c)");
+	// 强制客户端走TCP
+	SunnyNetMustTcp = ::SunnyDLL.api("SunnyNetMustTcp","void(pointer c,bool open)");
+	// 开启身份验证模式，开启后客户端只能使用S5代理，并且输入设置的账号密码
+	SunnyNetVerifyUser = ::SunnyDLL.api("SunnyNetVerifyUser","void(pointer c,bool open)");
+	// 添加身份验证模式的用户名和密码
+	SunnyNetSocket5AddUser = ::SunnyDLL.api("SunnyNetVerifyUser","bool(pointer c,str user,str pass)");
+	// 删除用户名
+	SunnyNetSocket5DelUser = ::SunnyDLL.api("SunnyNetSocket5DelUser","bool(pointer c,str user)");
+	// 获取授权的S5账号,注意UDP请求无法获取到授权的s5账号
+	SunnyNetGetSocket5User = ::SunnyDLL.api("SunnyNetGetSocket5User","pointer(int id)");
+	// 绑定端口
+	SunnyNetSetPort = ::SunnyDLL.api("SunnyNetSetPort","void(pointer c,int port)");
+	// 启动，需先绑定端口
+	SunnyNetStart = ::SunnyDLL.api("SunnyNetStart","bool(pointer c)");
+	// b=true 取消设置的全局代理, b=false 当前绑定的端口号为当前IE代理
+	SetIeProxy = ::SunnyDLL.api("SetIeProxy","void(pointer c,bool b)");
+	// 停止
+	SunnyNetClose = ::SunnyDLL.api("SunnyNetClose","void(pointer c)");
+	// 绑定回调地址，不需要的传null
+	SunnyNetSetCallback = ::SunnyDLL.api("SunnyNetSetCallback","void(pointer c,pointer h,pointer t,pointer w,pointer u)");
+	// 设置自定义的证书
+	SunnyNetSetCert = ::SunnyDLL.api("SunnyNetSetCert","bool(pointer c,pointer a)");
+	// 安装证书，启动后调用,将中间件的证书安装到系统内 返回安装结果文本，若失败需要手动安装
+	SunnyNetInstallCert = ::SunnyDLL.api("SunnyNetInstallCert","pointer(pointer c)");
+	// 获取启动时的错误信息
+	SunnyNetError = ::SunnyDLL.api("SunnyNetError","pointer(pointer c)");
+	// 设置上游代理, 仅支持Socket5和http 例如 socket5://admin:123456@127.0.0.1:8888 或 http://admin:123456@127.0.0.1:8888
+	SetGlobalProxy = ::SunnyDLL.api("SetGlobalProxy","bool(pointer c,str proxy)");
+	// 设置上游代理规则,默认全部使用上游代理(只要设置了上游代理)
+    // 输入Host不带端口号;在此规则内的不使用上游代理 多个用";"分号或换行分割 例如"127.0.0.1;192.168.*.*"地址不使用上游代理
+	CompileProxyRegexp = ::SunnyDLL.api("CompileProxyRegexp","bool(pointer c,str rule)");
+	// 设置强制走TCP规则,如果 打开了全部强制走TCP状态,本功能则无效
+	SetMustTcpRegexp = ::SunnyDLL.api("SetMustTcpRegexp","bool(pointer c,str rule)");
+	// 只允许一个中间件服务 加载驱动
+	StartProcess = ::SunnyDLL.api("StartProcess","bool(pointer c)");
+	// 添加指定的进程名进行捕获[需调用 StartProcess 后生效] name = 进程名 例如 e.exe 会强制断开此进程已经连接的TCP连接
+	ProcessAddName = ::SunnyDLL.api("ProcessAddName","void(pointer c,str name)");
+	// 删除指定的进程名 停止捕获[需调用 StartProcess 后生效]
+	ProcessDelName = ::SunnyDLL.api("ProcessDelName","bool(pointer c,str name)");
+	// 添加指定的进程PID进行捕获[需调用 StartProcess 后生效]
+	ProcessAddPid = ::SunnyDLL.api("ProcessAddPid","bool(pointer c,int pid)");
+	// 删除指定的进程PID 停止捕获[需调用 StartProcess 后生效]
+	ProcessDelPid = ::SunnyDLL.api("ProcessDelPid","bool(pointer c,int pid)");
+	// 开启后 所有进程将会被捕获[需调用 StartProcess 后生效] 无论开启还是关闭 都会将之前添加的进程名或PID清空
+	ProcessALLName = ::SunnyDLL.api("ProcessALLName","bool(pointer c,bool open)");
+	// 删除已设置的所有PID,进程名 [需调用 StartProcess 后生效]
+	ProcessCancelAll = ::SunnyDLL.api("ProcessALLName","bool(pointer c)");
+	// 获取请求来源ip
+	GetRequestClientIp = ::SunnyDLL.api("GetRequestClientIp","pointer(int i)");
+	
+	xcall = function(name){
+		var func = self[name];
+		if(!func) return;
+		function proxyFunc(...){
+			var v = func(...);
+			var result;
+			if(type(v) == type.pointer){
+				result = ..raw.tostring(v);
+				// gbk转为utf8
+				result = ..string.fromto(result,0,65001);
+				Free(v);
+			}else{
+				result = v;
+			}
+			return result;
+		}
+		
+		return proxyFunc;
+	}
+	
+	_meta = {
+		_get = function(k){
+			return xcall(k);
+		}
+		
+	}
+}
+
+/*
+function httpCallback(SunnyContext, 请求唯一ID, MessageId, 消息类型, 请求方式, 请求地址, 错误信息, pid){
+	// 同一个请求 的发送和响应 唯一ID一致，同一个请求 的发送和响应 MessageId不一致
+	// 如果消息类型 =  请求失败 错误信息=请求错误的原因
+	io.print(SunnyContext, 请求唯一ID, MessageId, 消息类型, 请求方式, 请求地址, 错误信息, pid)
+}
+
+*/
+

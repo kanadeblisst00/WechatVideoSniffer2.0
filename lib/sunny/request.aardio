@@ -1,0 +1,68 @@
+﻿
+namespace sunny;
+
+class request{
+	ctor(messageId){
+		this.messageId = messageId;
+	}
+	@_meta;
+	
+}
+
+namespace request{
+	Free = ::SunnyDLL.api("Free","void(pointer p)");
+    // 删除请求头
+    DelRequestHeader = ::SunnyDLL.api("DelRequestHeader","void(int id,str h)");
+    // 设置请求代理,仅支持Socket5和http 例如 socket5://admin:123456@127.0.0.1:8888 或 http://admin:123456@127.0.0.1:8888
+	SetRequestProxy = ::SunnyDLL.api("SetRequestProxy","bool(int id,str proxy)");
+	// 设置请求超时时间
+	SetRequestOutTime = ::SunnyDLL.api("SetRequestOutTime","void(int id,int t)");
+	// 设置请求url
+	SetRequestUrl = ::SunnyDLL.api("SetRequestUrl","void(int id,str url)");
+	// 设置请求体
+	SetRequestData = ::SunnyDLL.api("SetRequestData","bool(int id,string body)");
+	// 设置请求头，多个则调用多次，存在就修改，否则新增
+	SetRequestHeader = ::SunnyDLL.api("SetRequestHeader","void(int id,str k,str v)");
+	// 设置响应头，调用后请求不会发送
+	SetResponseHeader = ::SunnyDLL.api("SetResponseHeader","void(int id,str k,str v)");
+	// 获取请求头，返回的指针需调用Free释放
+	GetRequestAllHeader = ::SunnyDLL.api("GetRequestAllHeader","pointer(int id)");
+	// 设置cookies，格式: a=1;b=2
+	SetRequestAllCookie = ::SunnyDLL.api("SetRequestAllCookie","void(int id, str c)");
+	// 设置单条cookie
+	SetRequestCookie = ::SunnyDLL.api("SetRequestCookie","void(int id,str k,strv)");
+	// 获取所有cookies
+	GetRequestALLCookie = ::SunnyDLL.api("GetRequestALLCookie","pointer(int id)");
+	// 获取单条cookie
+	GetRequestCookie = ::SunnyDLL.api("GetRequestCookie","pointer(int id, str k)");
+	// 获取请求体长度
+	GetRequestBodyLen = ::SunnyDLL.api("GetRequestBodyLen","int(int id)");
+	// 获取请求体
+	GetRequestBody = ::SunnyDLL.api("GetRequestBody","pointer(int id)");
+	
+	xcall = function(name, messageId, len){
+		var func = self[name];
+		if(!func) error("不支持的函数!");
+		function proxyFunc(...){
+			var v = func(messageId, ...);
+			var result;
+			if(type(v) == type.pointer){
+				if(len) result = ..raw.tostring(v,1,len);
+				else result = ..raw.tostring(v);
+				Free(v);
+			}else{
+				result = v;
+			}
+			return result;
+		}
+		
+		return proxyFunc;
+	}
+	
+	_meta = {
+		_get = function(k){
+			return xcall(k, owner.messageId);
+		}
+		
+	}
+}

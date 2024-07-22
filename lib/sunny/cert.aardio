@@ -1,0 +1,55 @@
+﻿
+namespace sunny;
+
+class cert{
+	ctor(){
+		
+	}
+}
+
+namespace cert{
+	// 表示在握手过程中不应该请求客户端证书，并且如果发送了任何证书，它们将不会被验证
+    SSL_ClientAuth_NoClientCert = 0;
+    // 表示应该在握手过程中请求客户端证书，但不要求客户端发送任何证书
+	SSL_ClientAuth_RequestClientCert = 1;
+	// 表示在握手过程中应该请求客户端证书，并且客户端至少需要发送一个证书，但该证书不需要有效
+	SSL_ClientAuth_RequireAnyClientCert = 2;
+	// 表示应该在握手过程中请求客户端证书，但不要求客户端发送证书。如果客户端发送了一个证书，它就需要是有效的
+	SSL_ClientAuth_VerifyClientCertIfGiven = 3;
+	// 表示握手时需要请求客户端证书，客户端至少需要发送一个有效的证书。
+	SSL_ClientAuth_RequireAndVerifyClientCert = 4;
+	
+	CreateCertificate = ::SunnyDLL.api("CreateCertificate","pointer()");
+	
+	RemoveCertificate = ::SunnyDLL.api("CreateCertificate","void(pointer cert)");
+	// 跳过证书验证，需先加载证书
+	SetInsecureSkipVerify = ::SunnyDLL.api("SetInsecureSkipVerify","void(pointer cert,bool skip)");
+	// 从路径加载p12证书
+	LoadP12Certificate = ::SunnyDLL.api("LoadP12Certificate","void(pointer cert,str path,str pass)");
+	// 从一对文件读取和解析一个公钥/私钥对。文件必须包含PEM编码的数据。证书文件可以在叶证书之后包含中间证书，形成证书链。
+	LoadX509KeyPair = ::SunnyDLL.api("LoadX509KeyPair","void(pointer cert,str cert,str key)");
+	// 给指定host添加证书
+	LoadX509Certificate = ::SunnyDLL.api("LoadX509Certificate","void(pointer cert,str host,str cert,str key)");
+	// 需先加载证书
+	SetServerName = ::SunnyDLL.api("SetServerName","void(pointer cert,str name)");
+	//
+	GetServerName = ::SunnyDLL.api("GetServerName","pointer(pointer cert)");
+	// 添加客户端信息证书(文件格式)
+	AddCertPoolPath = ::SunnyDLL.api("AddCertPoolPath","pointer(pointer cert,str path)");
+	// 添加客户端信息证书(文本格式)
+	AddCertPoolText = ::SunnyDLL.api("AddCertPoolText","pointer(pointer cert,str text)");
+	// 0-4,见常量
+	AddClientAuth = ::SunnyDLL.api("AddClientAuth","void(pointer cert,int mode)");
+	// 创建ca证书
+	CreateCA = ::SunnyDLL.api("CreateCA","bool(pointer cert,str a,str b,str c,str d,str e,str f,int len,int day)");
+	// 导出公钥
+	ExportPub = ::SunnyDLL.api("ExportPub","pointer(pointer cert)");
+	// 导出私钥
+	ExportKEY = ::SunnyDLL.api("ExportKEY","pointer(pointer cert)");
+	// 导出ca证书
+	ExportCA = ::SunnyDLL.api("ExportCA","pointer(pointer cert)");
+	
+	GetCommonName = ::SunnyDLL.api("GetCommonName","pointer(pointer cert)");
+	// 导出p12文件
+	ExportP12 = ::SunnyDLL.api("ExportP12","pointer(pointer cert,str path,str pass)");
+}

@@ -1,0 +1,40 @@
+import win.ui;
+import fsys;
+import win.ui.atom;
+/*DSG{{*/
+mainForm = win.form(text="视频号下载助手2.5";right=903;bottom=615;border="dialog frame")
+mainForm.add(
+tab={cls="tab";left=8;top=8;right=896;bottom=592;db=1;dl=1;dr=1;dt=1;edge=1;z=1}
+)
+/*}}*/
+
+//io.open()
+
+// 避免软件被多开，主要是sunny不支持多开
+var atom,hwnd = mainForm.atom("B1EEDB5B-8ABC-BB90-BA2D-05A6D32E8581");
+if(!atom){win.quitMessage(); return;}
+
+// 关闭时保存之前的配置
+mainForm.saveConfigBeforeDestroy = function(){
+	var c = table.tostring({
+		DownloadOpenInExplore=thread.get("DownloadOpenInExplore");
+		feedAcLevel=thread.get("feedAcLevel");
+	})
+    string.save(io.appData(io._exefile+".config"), c);   
+}
+
+monitorForm = mainForm.tab.loadForm("\dlg\monitor.aardio");
+
+// 异步加载组件，不然界面会一直无响应
+mainForm.setTimeout(function(){
+	downloaderForm = mainForm.tab.loadForm("\dlg\downloader.aardio");
+}, 10);
+
+// 窗口关闭时，停止sunny和aria2
+mainForm.onClose = function(hwnd,message,wParam,lParam){
+    if(monitorForm.sunnyObj) monitorForm.sunnyObj.release();
+    if(downloaderForm) downloaderForm.aria2.stop();
+}
+
+mainForm.show();
+return win.loopMessage();

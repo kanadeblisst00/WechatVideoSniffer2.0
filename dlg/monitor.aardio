@@ -1,0 +1,513 @@
+import win.ui;
+import sunny;
+import process;
+import win.ui.menu;
+import win.ui.statusbar;
+import thread.table;
+import win.ui.atom;
+import win.clip;
+import web.json;
+import fsys;
+import web.view;
+import fsys.dlg;
+import kirequests;
+/*DSG{{*/
+winform = win.form(text="监听器";right=903;bottom=615;border="dialog frame")
+winform.add(
+listview={cls="listview";left=8;top=8;right=893;bottom=560;edge=1;font=LOGFONT(h=-14);z=1}
+)
+/*}}*/
+
+// 因为视频链接很长，所以用队列存储
+var FeedUrlData = thread.table("FeedUrlData", true);
+var FeedAcData = thread.table("FeedAcData", true);
+// sunny线程回调函数
+winform.httpCallback = function(SunnyContext, requestId, messageId, messageType, method, url, err, pid){
+	// 注意需先导入sunny初始化dll对象
+	import sunny;
+	import win;
+	import sunny.request;
+	import sunny.response;
+	import web.json;
+	import thread.table;
+	
+	var formatDuration = function(duration){
+		if(!duration) return "";
+		var fDuration = 0;
+		duration = math.floor(duration/1000);
+		if(duration<60){
+			fDuration = tostring(math.floor(duration)) + "秒";
+		}elseif(duration>=60 && duration <3600){
+			fDuration = tostring(math.floor(duration/60))+"分"+tostring(duration%60)+"秒";
+		}elseif(duration>=3600){
+			fDuration = tostring(math.floor(duration/3600))+"时"+tostring(math.floor(duration%3600/60))+"分";
+		}
+		return fDuration;
+	}
+	
+	var formatSize = function(size){
+		if(!size) return "";
+		var fSize = 0;
+		if(size<=1024*1024){
+			fSize = tostring(math.round(size/1024,2)) + "K";
+		}elseif(size<=1024*1024*1024 && size > 1024*1024){
+			fSize = tostring(math.round(size/1024/1024,2)) + "M";
+		}elseif(size>1024*1024*1024){
+			fSize = tostring(math.round(size/1024/1024/1024,2)) + "G";
+		}
+		return fSize;
+	}
+	
+	var req = sunny.request(messageId);
+	var resp = sunny.response(messageId);
+	
+	if(messageType == 1){// 发起请求
+		if(string.find(url, "@virtual_svg-icons-register.publish")){
+			// 删除压缩标记，不删除的话处理比较麻烦
+			req.DelRequestHeader("Accept-Encoding");
+		}
+		if(string.find(url, "@www.httpbin.org")){
+			var body = req.GetRequestBody();
+			if(body != null){
+				var FeedUrlData = thread.table("FeedUrlData");
+				var FeedAcData = thread.table("FeedAcData");
+				io.print("body: ",body)
+				var data = web.json.tryParse(body):{};
+				if(!data.id){
+					win.msgbox("软件更新后请先清理缓存后重试", "错误提示");
+					return;
+				}
+				var id = data.id ++ "|" ++ string.split(data.nonce_id:"", '_')[1];
+				var fSize = "";
+				try{
+					fSize = formatSize(data.size)
+				}
+				catch(e){
+					io.print(e);
+				}
+				var fDuration = "";
+				try{
+					fDuration = formatDuration(data.duration)
+				}
+				catch(e){
+					io.print(e);
+				}
+				var title = data.title : "";
+				var item = {id;title;fDuration;fSize;data.key:"";"";data.url};
+				owner.listview.addItem(item);
+				owner.statusbar.setText("监听到视频信息("+title+")");
+				FeedUrlData[id] = data.url;
+				FeedAcData[id] = data.fileFormat;
+				req.SetResponseHeader("Connection", "Close");
+				req.SetResponseHeader("Access-Control-Allow-Origin", "*");
+				req.SetResponseHeader("Access-Control-Allow-Headers", "*");
+				req.SetResponseHeader("Access-Control-Allow-Methods", "OPTIONS,POST,GET");
+			}
+		}
+		
+	}elseif(messageType == 2){//请求完成
+		if(string.find(url, "@virtual_svg-icons-register.publish")){
+			var bodyLen = resp.GetResponseBodyLen();
+			var body = resp.GetResponseBody();
+			var regex = "async finderGetCommentDetail\((\w+)\)\{return(.*?)\}async";
+			var replaceStr = "async finderGetCommentDetail(\1){const feedResult=await\2;var data_object=feedResult.data.object;var media=data_object.objectDesc.media[0];var fetch_body={duration:media.spec[0].durationMs,title:data_object.objectDesc.description,url:media.url+media.urlToken,size:media.fileSize,key:media.decodeKey,id:data_object.id,nonce_id:data_object.objectNonceId,nickname:data_object.nickname,createtime:data_object.createtime,fileFormat:media.spec.map(o => o.fileFormat)};fetch('https://www.httpbin.org/post',{method:'POST',headers:{'Content-Type':'application/json',},body:JSON.stringify(fetch_body)}).then(response=>{console.log(response.ok,response.body)});return feedResult;}async";
+			var hookBody = string.replace(body, regex, replaceStr);
+			resp.SetResponseData(hookBody, #hookBody);
+		}
+	}elseif(messageType == 3){//请求失败
+	}
+	
+}
+
+var startSunny = function(){
+	var port = 48721;
+	var sunnyObj = sunny(port);
+	// 指定http的线程回调函数
+	sunnyObj.HttpCallback = winform.httpCallback;
+	// 指定回调函数的owner对象，可以在回调函数里通过owner使用该对象
+	sunnyObj.callbackOwner = winform;
+	// 启动sunny监听服务
+	if(!sunnyObj.start()){
+		win.msgbox("sunny启动失败");
+	}else{
+		io.print("启动成功");
+	}
+	return sunnyObj;
+}
+
+var deleteCacheDir = function(){	
+	import fsys;
+	import win;
+	import win.clip;
+	
+	var cachePath = io.fullpath(io.appData("..\Roaming\Tencent\WeChat\radium\web\profiles"));
+	if(!io.exist(cachePath)){
+		win.msgbox( cachePath+" 缓存目录不存在，无需删除!", "删除提示");
+		return;
+	}
+	fsys.delete(cachePath);
+	var t = 3000;
+	var tip = cachePath+"。删除失败，路径以复制到剪切板，请手动删除!";
+	while(t){
+		if(!io.exist(cachePath)){
+			tip = cachePath + "。删除缓存目录成功!";
+			break;
+		}
+		win.delay(10);
+		t -= 10;
+	}
+	win.clip.write(cachePath);
+	win.msgbox(tip, "删除提示");
+}
+
+var addMenuItem = function(){
+	var menuHelp = win.ui.popmenu(mainForm);
+	menuHelp.add("提示信息",
+		function(id){
+			var s = "该软件为免费软件，如果你付费获取的，请马上退款。如果遇到无法下载的，可以进微信群反馈。进微信群加我好友邀你或者通过公众号菜单栏获取群二维码。";
+			win.msgbox(s,' ');
+		} 
+	)
+	menuHelp.add("关于",
+		function(id){
+			var s = '开发者 公众号: Python成长路, 微信: kanadeblisst';
+			win.msgbox(s,' ');
+		} 
+	)
+	menuHelp.add(); 
+	var menuOption = win.ui.popmenu(mainForm);
+	menuOption.add("关闭监听",function(){
+		if(!winform.sunnyObj) {
+			winform.sunnyObj = startSunny();
+			menuOption.setString(1, "关闭监听");
+			winform.statusbar.setText("监听已启动！")
+		}else{
+			winform.sunnyObj.release();
+			winform.sunnyObj = null;
+			menuOption.setString(1, "启动监听");
+			winform.statusbar.setText("监听已关闭！")
+		}
+	})
+	menuOption.add("删除缓存",function(){
+		if(process.find("WeChat.exe")){
+			win.msgbox("删除缓存需要先关闭微信！", "错误提示");
+			return;
+		}
+		thread.invoke(deleteCacheDir);
+	})
+	menuOption.add("下载完成后显示",function(){
+		var checked = menuOption.checked(3);
+		thread.set("DownloadOpenInExplore", !checked);
+		menuOption.check(3, !checked);
+	})
+	menuOption.add("建议反馈",function(){
+		win.msgbox("请加我微信(kanadeblisst)邀你进交流群！","");
+	})
+	menuOption.add();
+	
+	var menuAc = win.ui.popmenu(mainForm);
+	menuAc.onMenuItemClick = function(id){
+		menuAc.selId = id;
+		thread.set("feedAcLevel", menuAc.selIndex);
+	}
+	menuAc.add("高画质");
+	menuAc.add("一般画质");
+	menuAc.add("低画质");
+	var defaultFeedAcLevel = 2;
+	var defaultDownloadOpenInExplore = true;
+	if(io.exist(io.appData(io._exefile+".config"))){
+		try{
+			var configString = string.load(io.appData(io._exefile+".config"))
+			var config = eval(configString);
+			..io.print("configString: ", configString)
+			if(config["feedAcLevel"] !== null){
+				defaultFeedAcLevel = config["feedAcLevel"];
+			}
+			if(config["DownloadOpenInExplore"] !== null){
+				defaultDownloadOpenInExplore = config["DownloadOpenInExplore"];
+			}
+		}
+	}
+	menuAc.selIndex = defaultFeedAcLevel;
+	thread.set("feedAcLevel", defaultFeedAcLevel);
+	thread.set("DownloadOpenInExplore", defaultDownloadOpenInExplore);
+	menuOption.check(3, defaultDownloadOpenInExplore);
+	var menu = win.ui.menu(mainForm);
+	menu.add('菜单', menuOption); 
+	menu.add('清晰度', menuAc); 
+	menu.add('帮助', menuHelp); 
+}
+
+winform.decodeVideo = function(name, path, decodeArray, rawID, winform){
+	import crypt.bin;
+	import fsys.file;
+	import win;
+	import process;
+	import fsys;
+	
+	if(!io.exist(path)) return;
+	fsys.createDir("\视频");
+	
+	// 替换非法文件名
+	name = string.replace(name, "[\n\t\b\r\f\v]", "");
+	name = string.replace(name, `["*<>|/\:?\\]`, " ");
+	var pathLen = #io.localpath("/") + 15;
+	if(#name > (256-pathLen)) name = string.slice(name,1,256-pathLen,true);
+	var videoFilename = io.localpath("/视频/" + name + ".mp4");
+	if(decodeArray){
+		var decArray = crypt.bin.decodeBase64(decodeArray);
+		var decSize = #decArray;
+		var fw = fsys.file(path, "r+");
+		var encVideoBin = fw.read(decSize);
+		
+		var decVideoArray = {};
+		for(i=1;decSize;1){
+			table.push(decVideoArray, encVideoBin[i] ^ decArray[i])
+		}
+		
+		var decVideoBin = string.pack(decVideoArray);
+		fw.seek("set");
+		fw.write(decVideoBin);
+		fw.close();
+		win.delay(100);
+	}
+	if(io.exist(videoFilename)){
+		videoFilename = io.localpath("/视频/" + name + "（1）.mp4");
+	}
+	fsys.move(path, videoFilename);
+	win.delay(200);
+	for(i=1;winform.listview.count;1){
+        if(winform.listview.getItemText(i, 1) == rawID){
+            winform.listview.setItemText(videoFilename, i, 6);
+        }
+    }
+    if(thread.get("DownloadOpenInExplore")){
+        process.exploreSelect(videoFilename);
+    }
+	winform.statusbar.setText("解密完成，可以右键点击 浏览路径");
+}
+
+calcFeedUrl = function(rowID){
+	var ac = thread.get("feedAcLevel");
+	var acList = FeedAcData[rowID];
+	table.sort(acList);
+	var acString = "";
+	if(ac == 1){
+		acString = acList[1];
+	}elseif(ac == 2){
+		var index = math.floor(#acList/2);
+		acString = acList[index];
+	}elseif(ac == 3){
+		acString = acList[#acList];
+	}
+	var feedUrl = FeedUrlData[rowID] + "&X-snsvideoflag=" + acString;
+	if(kirequests.head(feedUrl).status > 300){
+		table.removeByValue(acList, acString);
+		if(!#acList) return ;
+		FeedAcData[rowID] = acList;
+		return calcFeedUrl(rowID);
+	}
+	return feedUrl;
+}
+
+
+var initListView = function(){
+	var columnKeys = {"ID","标题","时长","大小","解密key","路径","链接"};
+	winform.listview.setColumns(columnKeys,{50,200,60,60,100,100,-1});
+	// 启用可以选择每一行
+	winform.listview.fullRow = true;
+	// 设置提示信息
+	winform.statusbar = win.ui.statusbar(mainForm);
+	winform.statusbar.setMinHeight(24);//设置最小高度（含上下边框宽度）
+	//winform.statusbar.setText("请在菜单栏开启监听！");
+	//右键点击列表项触发此事件
+	winform.listview.onRightClick = function(itemIndex,subItem,nmListView){
+		if(itemIndex == 0){
+			// 空白处点击
+			winform.popmenu0.popup();
+		}elseif(itemIndex>0){
+			// 选项处点击
+			winform.popmenu.popup();
+		}
+	}
+	winform.popmenu = win.ui.popmenu(winform);
+	winform.popmenu.add('复制链接',function(id){
+		var index = winform.listview.selIndex;
+		var rowID = winform.listview.getItemText(index, 1);
+		var url = calcFeedUrl(rowID);
+		if(url){
+			win.clip.write(url);
+			winform.statusbar.setText("已复制第"+index+"行链接到剪切板!");
+		}else{
+			winform.statusbar.setText("获取视频下载链接失败！");
+		}
+	});
+	winform.popmenu.add('复制行',function(id){
+		var item = {};
+		var index = winform.listview.selIndex;
+		for(i=1;5;1){
+			item[columnKeys[i]] = winform.listview.getItemText(index, i);
+		}
+		item["链接"] = FeedUrlData[item["ID"]];
+		item["画质"] = FeedAcData[item["ID"]];
+		win.clip.write(web.json.stringify(item,,false));
+		winform.statusbar.setText("已复制"+index+"行数据到剪切板!");
+	});
+	
+	winform.popmenu.add('下载并解密',function(id){
+		var index = winform.listview.selIndex;
+		var rowID = winform.listview.getItemText(index, 1);
+		var url = calcFeedUrl(rowID);
+		if(url){
+			downloaderForm.download(url, rowID);
+			winform.statusbar.setText("已添加到下载队列!");
+			mainForm.tab.selIndex = 2;
+		}else{
+			winform.statusbar.setText("获取视频下载链接失败！");
+		}
+	});
+	winform.popmenu.add('解密文件',function(id){
+		var index = winform.listview.selIndex;
+		var path = fsys.dlg.open();;
+		if(!path || path == ""){
+			win.msgbox("请先选择下载好的视频文件!","错误提示");
+			return;
+		}
+		if(!io.exist(path)){
+			win.msgbox("视频文件不存在!","错误提示");
+			return;
+		}
+		var key = winform.listview.getItemText(index, 5);
+		var name = winform.listview.getItemText(index, 2);
+		var rawID = winform.listview.getItemText(index, 1);
+		var decodeArray = (!key || key == "") ? null : winform.webView.xcall("get_decryptor_array", key);
+		thread.invoke(winform.decodeVideo, name, path, decodeArray, rawID, winform);
+	});
+	winform.popmenu.add('浏览路径',function(id){
+		var index = winform.listview.selIndex;
+		var path = winform.listview.getItemText(index, 6);
+		if(!path || path == ""){
+			win.msgbox("路径为空，请等待文件下载和解密完成!","错误提示");
+			return;
+		}
+		if(!io.exist(path)){
+			win.msgbox("视频文件不存在!","错误提示");
+			return;
+		}
+		process.exploreSelect(path);
+	});
+	winform.popmenu.add('删除',function(id){
+		var index = winform.listview.selIndex;
+		var rawID = winform.listview.getItemText(index, 1);
+		FeedUrlData[rawID] = null;
+		FeedAcData[rawID] = null;
+		winform.listview.delItem(index);
+	});
+	
+	winform.popmenu0 = win.ui.popmenu(winform);
+	winform.popmenu0.add('导入数据',function(id){
+		var files = fsys.dlg.openEx();
+		for(i,file in files){
+			var dataStr = string.load(file);
+			if(!string.isUtf8(dataStr)) dataStr = string.fromto(dataStr,0,65001);
+			var data = web.json.tryParse(dataStr);
+			if(data && data["标题"]){
+    		    var id = data["ID"];
+    		    var key = data["解密key"];
+    		    var url = data["链接"];
+    		    var item = {id;data["标题"];data["时长"];data["大小"];key;"";url};
+    		    winform.listview.addItem(item);
+    		    FeedUrlData[id] = url;
+    		    FeedAcData[id] = data["画质"];
+    		}
+		}
+	});
+	
+	winform.popmenu0.add('清空列表',function(id){
+		for(i=1;winform.listview.count;1){
+			var rawID = winform.listview.getItemText(i, 1);
+    		FeedUrlData[rawID] = null;
+			FeedAcData[rawID] = null;
+    	}
+		winform.listview.clear();
+    });
+	
+}
+
+var initWebView = function(winform){
+	import web.view;
+	
+	winform.webView = web.view(winform);
+	if(!winform.webView){
+		if(win.msgboxTest("当前电脑可能未安装Edge WebView2(未安装无法使用),是否打开下载地址？","错误提示", winform)){
+			process.openUrl("https://go.microsoft.com/fwlink/?linkid=2124701");
+		}
+		win.quitMessage();
+		return;
+	}
+	// 非开发环境禁用F12
+	if(!_STUDIO_INVOKED) winform.webView.enableDevTools(false);
+	winform.webView.html = /**
+	<!DOCTYPE html>
+	<html>
+    	<head>
+        	<meta charset="utf-8">
+        	<title></title>
+    	</head>
+    	<script>
+        	window.VTS_WASM_URL = "https://aladin.wxqcloud.qq.com/aladin/ffmepeg/video-decode/1.2.50/wasm_video_decode.wasm"; 
+        	window.MAX_HEAP_SIZE = 33554432;
+    	</script>
+    	<script src="https://aladin.wxqcloud.qq.com/aladin/ffmepeg/video-decode/1.2.50/wasm_video_decode.js"></script>
+    	<script>
+        	var decryptor_array;
+        	
+			function Uint8ArrayToBase64(bytes) {
+  				let binary = '';
+  				const len = bytes.byteLength;
+  				for (let i = 0; i < len; i++) {
+    				binary += String.fromCharCode(bytes[i]);
+  				}
+  				return window.btoa(binary);
+			}
+			
+			function base64ToUint8Array(base64) {
+  				const binaryString = window.atob(base64); 
+  				const len = binaryString.length;
+  				const bytes = new Uint8Array(len);
+  				for (let i = 0; i < len; i++) {
+    				bytes[i] = binaryString.charCodeAt(i);
+  				}
+  				return bytes;
+			}
+			
+        	function wasm_isaac_generate(t, e) {
+            	decryptor_array = new Uint8Array(e);
+            	var r = new Uint8Array(Module.HEAPU8.buffer,t,e);
+            	decryptor_array.set(r.reverse());
+        	}
+	
+        	function get_decryptor_array(seed) {
+            	let decryptor = new Module.WxIsaac64(seed);
+            	decryptor.generate(131072);
+            	return Uint8ArrayToBase64(decryptor_array);
+        	}
+        	
+    	</script>
+    	<body>
+    	</body>
+	</html>
+	**/
+	
+	winform.sunnyObj = startSunny();
+	winform.statusbar.setText("已开启监听！")
+
+}
+
+addMenuItem();
+initListView();
+winform.setTimeout(initWebView,500, winform);
+
+
+winform.show();
+return win.loopMessage();
